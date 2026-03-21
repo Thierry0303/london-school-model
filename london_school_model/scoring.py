@@ -1,22 +1,99 @@
-# School Scoring Algorithms
-
-# This module contains various algorithms to calculate scores for schools based on different criteria.
-
-
-def calculate_average_score(students_scores):
-    """ Calculate the average score of students. """
-    if not students_scores:
-        return 0
-    return sum(students_scores) / len(students_scores)
+import pandas as pd
+from .utils import minmax_normalise, invert
 
 
-def calculate_weighted_score(students_scores, weights):
-    """ Calculate weighted scores for students based on given weights. """
-    if not students_scores or len(students_scores) != len(weights):
-        return 0
-    return sum(score * weight for score, weight in zip(students_scores, weights))
+# ---------------------------------------------------------
+# Default weights
+# ---------------------------------------------------------
+
+DEFAULT_WEIGHTS = {
+    "distance": 0.35,
+    "oversub": 0.25,
+    "ofsted": 0.20,
+    "imd": 0.10,
+    "crime": 0.10,
+}
 
 
-def determine_pass_fail(score, passing_score=50):
-    """ Determine if the score is a pass or fail. """
-    return "Pass" if score >= passing_score else "Fail"
+# ---------------------------------------------------------
+# Ofsted → numeric score
+# ---------------------------------------------------------
+
+OFSTED_MAP = {
+    "Outstanding": 1.0,
+    "Good": 0.75,
+    "Requires Improvement": 0.25,
+    "Inadequate": 0.0,
+    "Unknown": 0.5,  # neutral fallback
+}
+
+
+def ofsted_to_score(badge: str) -> float:
+    return OFSTED_MAP.get(badge, 0.5)
+
+
+# ---------------------------------------------------------
+# Main scoring function
+# ---------------------------------------------------------
+
+def score_schools(df: pd.DataFrame, weights: dict = None) -> pd.DataFrame:
+    """
+    Compute a weighted score for each school.
+
+    Inputs expected in df:
+    - Distance_km
+    - Oversub Ratio
+    - Ofsted Badge
+    - IMD Decile
+    - Crime Score
+
+    Returns:
+        DataFrame with new columns:
+        - Distance_score
+        - Oversub_score
+        - Ofsted_score
+        - IMD_score
+        - Crime_score
+        - Final_score
+    """
+    df = df.copy()
+    weights = weights or DEFAULT_WEIGHTS
+
+    # -----------------------------
+    # Distance (lower is better)
+    # -----------------------------
+    df["Distance_score"] = invert(minmax_normalise(df["Distance_km"]))
+
+    # -----------------------------
+    # Oversubscription (lower is better)
+    # -----------------------------
+    df["Oversub_score"] = invert(minmax_normalise(df["Oversub Ratio"]))
+
+    # -----------------------------
+    # Ofsted (higher is better)
+    # -----------------------------
+    df["Ofsted_score"] = df["Ofsted Badge"].apply(ofsted_to_score)
+
+    # -----------------------------
+    # IMD (higher decile = less deprived = better)
+    # -----------------------------
+    df["IMD_score"] = minmax_normalise(df["IMD Decile"].fillna(df["IMD Decile"].median()))
+
+    # -----------------------------
+    # Crime (lower is better)
+    # -----------------------------
+    df["Crime_score"] = invert(minmax_normalise(df["Crime Score"].fillna(df["Crime Score"].median())))
+
+    # -----------------------------
+    # Final weighted score
+    # -----------------------------
+    df["Final_score"] = (
+        df["Distance_score"] * weights["distance"]
+        + df["Oversub_score"] * weights["oversub"]
+        + df["Ofsted_score"] * weights["ofsted"]
+        + df["IMD_score"] * weights["imd"]
+        + df["Crime_score"] * weights["crime"]
+    )
+
+    return df.sort_values("Final_score", ascending=False).reset_index(drop=True)
+"Fail"
