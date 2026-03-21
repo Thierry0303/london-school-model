@@ -1,1 +1,6 @@
-school_id,school_name,postcode,latitude,longitude
+URN,School Name,Phase,Local Authority,Postcode,Latitude,Longitude,PAN 2025,1st Pref Apps 2025,Ofsted Rating
+100001,Test Primary A,Primary,Hammersmith and Fulham,SW6 1AA,51.4751,-0.2055,60,45,Good
+100002,Test Primary B,Primary,Hammersmith and Fulham,SW6 7SR,51.4802,-0.2101,30,50,Outstanding
+100003,Test Secondary A,Secondary,Hammersmith and Fulham,SW6 6HS,51.4860,-0.1950,180,300,Good
+100004,Test Secondary B,Secondary,Hammersmith and Fulham,SW6 3PA,51.4685,-0.2080,150,120,Requires Improvement
+100005,Test All-Through,All-through,Hammersmith and Fulham,SW6 4LY,51.4700,-0.1900,90,70,Outstanding
