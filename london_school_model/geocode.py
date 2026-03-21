@@ -1,1 +1,9 @@
-def geocode_address(address):\n    """Geocode an address using a geocoding service.\n    Returns latitude and longitude of the address.\n    """\n    # Implementation here\n    pass\n\ndef reverse_geocode(lat, lon):\n    """Reverse geocode latitude and longitude to get the address.\n    Returns the address corresponding to the coordinates.\n    """\n    # Implementation here\n    pass\n
+"""Geocoding module for London schools"""
+
+def geocode_postcode(postcode):
+    """Geocode a UK postcode to latitude and longitude"""
+    pass
+
+def reverse_geocode(lat, lon):
+    """Reverse geocode coordinates to postcode"""
+    pass
