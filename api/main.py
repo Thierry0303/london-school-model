@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 # Load data at startup
-DATA_PATH = Path(__file__).parent.parent / "data" / "schools.json"
+DATA_PATH = Path(__file__).parent.parent / "api" / "schools.json"
 
 def load_schools():
     with open(DATA_PATH) as f:
