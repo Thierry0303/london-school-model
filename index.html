@@ -155,7 +155,7 @@
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 const API_BASE = 'https://london-school-model.onrender.com';
-const JSON_FALLBACK = './schools.json';
+const JSON_FALLBACK = 'https://london-school-model.onrender.com/schools?limit=5000';
 
 const BAND_COLORS = { 'Outstanding':'#27AE60', 'Good':'#2980B9', 'Requires improvement':'#E67E22', 'Inadequate':'#C0392B', 'Unknown':'#95A5A6' };
 const RATING_MAP = { 1:'Outstanding', 2:'Good', 3:'Requires improvement', 4:'Inadequate' };
