@@ -1,7 +1,14 @@
 """
 scripts/process_data.py
-Regenerate data/schools.json from source CSVs.
-Run from the project root: python3 scripts/process_data.py
+Rebuild schools.json from GIAS + Ofsted + IMD sources.
+
+Source files expected in data/:
+  - catholic_schools_with_coords.csv  (GIAS full register — all England schools with coords)
+  - ofsted.csv                         (Ofsted inspection export)
+  - imd_lookup.csv                     (IMD deprivation by LSOA)
+
+Run from project root:
+  python3 scripts/process_data.py
 """
 
 import pandas as pd
@@ -16,102 +23,132 @@ QUALITY_MAP = {1: 'Outstanding', 2: 'Good', 3: 'Requires improvement', 4: 'Inade
 OFSTED_SCORES = {1: 100, 2: 80, 3: 40, 4: 0}
 
 
+def load_gias():
+    path = DATA_DIR / "catholic_schools_with_coords.csv"
+    gias = pd.read_csv(path, low_memory=False)
+    london = gias[
+        (gias['GOR (name)'] == 'London') &
+        (gias['EstablishmentStatus (name)'] == 'Open')
+    ].copy()
+    print(f"  GIAS open London schools: {len(london)}")
+    return london
+
+
 def load_ofsted():
     path = DATA_DIR / "ofsted.csv"
     df = pd.read_csv(path, encoding='latin1')
-    # Filter London only
     df = df[df['Ofsted region'] == 'London'].copy()
-    print(f"  Loaded {len(df)} London schools from Ofsted data")
+    print(f"  Ofsted London records: {len(df)}")
     return df
 
 
 def load_imd():
     path = DATA_DIR / "imd_lookup.csv"
-    if not path.exists():
-        print("  imd_lookup.csv not found, skipping IMD enrichment")
-        return None
-    return pd.read_csv(path)
+    imd = pd.read_csv(path)
+    imd = imd.rename(columns={
+        'LSOA code (2021)': 'lsoa_code',
+        'Index of Multiple Deprivation (IMD) Rank (where 1 is most deprived)': 'imd_rank',
+        'Index of Multiple Deprivation (IMD) Decile (where 1 is most deprived 10% of LSOAs)': 'imd_decile',
+    })[['lsoa_code', 'imd_rank', 'imd_decile']]
+    max_rank = imd['imd_rank'].max()
+    imd['imd_score'] = ((imd['imd_rank'] / max_rank) * 100).round(1)
+    print(f"  IMD records: {len(imd)}")
+    return imd
 
 
-def process(df, imd_df=None):
-    cols = {
+def build(gias_df, ofsted_df, imd_df):
+    # GIAS base columns
+    gias_cols = {
+        'URN': 'urn', 'EstablishmentName': 'name',
+        'LA (name)': 'local_authority', 'Postcode': 'postcode',
+        'PhaseOfEducation (name)': 'phase',
+        'TypeOfEstablishment (name)': 'school_type',
+        'StatutoryLowAge': 'age_from', 'StatutoryHighAge': 'age_to',
+        'OfficialSixthForm (name)': 'sixth_form',
+        'Gender (name)': 'gender',
+        'AdmissionsPolicy (name)': 'admissions',
+        'NumberOfPupils': 'pupils', 'SchoolCapacity': 'capacity',
+        'NumberOfBoys': 'num_boys', 'NumberOfGirls': 'num_girls',
+        'PercentageFSM': 'pct_fsm',
+        'ReligiousCharacter (name)': 'religious_character',
+        'Diocese (name)': 'diocese',
+        'Trusts (name)': 'trust_name',
+        'SchoolWebsite': 'website',
+        'TelephoneNum': 'telephone',
+        'HeadFirstName': 'head_first', 'HeadLastName': 'head_last',
+        'Street': 'street', 'Town': 'town',
+        'Latitude': 'lat', 'Longitude': 'lng',
+        'LSOA (code)': 'lsoa_code',
+        'ParliamentaryConstituency (name)': 'constituency',
+    }
+    base = gias_df.rename(columns={k: v for k, v in gias_cols.items() if k in gias_df.columns})
+    base = base[[v for v in gias_cols.values() if v in base.columns]].copy()
+
+    # Ofsted columns
+    ofsted_cols = {
         'URN': 'urn',
-        'School name': 'name',
-        'Local authority': 'local_authority',
-        'Postcode': 'postcode',
-        'Ofsted phase': 'phase',
-        'Type of education': 'school_type',
-        'Admissions policy': 'admissions',
-        'Sixth form': 'sixth_form',
-        'Total number of pupils': 'pupils',
-        'Statutory lowest age': 'age_from',
-        'Statutory highest age': 'age_to',
         'Quality of education': 'quality_raw',
         'Behaviour and attitudes': 'behaviour_raw',
         'Personal development': 'personal_dev_raw',
         'Effectiveness of leadership and management': 'leadership_raw',
         'Safeguarding is effective': 'safeguarding',
         'Inspection start date': 'inspection_date',
-        'The income deprivation affecting children index (IDACI) quintile': 'idaci_quintile',
         'Web link': 'ofsted_url',
-        'Designated religious character': 'religious_character',
+        'The income deprivation affecting children index (IDACI) quintile': 'idaci_quintile',
         'Multi-academy trust name': 'mat_name',
-        'Parliamentary constituency': 'constituency',
+        'Total number of pupils': 'ofsted_pupils',
     }
+    ofsted = ofsted_df.rename(columns={k: v for k, v in ofsted_cols.items() if k in ofsted_df.columns})
+    ofsted = ofsted[[v for v in ofsted_cols.values() if v in ofsted.columns]].copy()
+    ofsted['quality_raw'] = ofsted['quality_raw'].apply(lambda x: x if x in [1, 2, 3, 4] else None)
+    ofsted['quality_label'] = ofsted['quality_raw'].map(QUALITY_MAP)
+    ofsted['ofsted_score'] = ofsted['quality_raw'].map(OFSTED_SCORES)
 
-    df = df.rename(columns={k: v for k, v in cols.items() if k in df.columns})
+    # Join
+    base = base.merge(ofsted, on='urn', how='left')
+    base = base.merge(imd_df, on='lsoa_code', how='left')
 
-    df['quality_label'] = df['quality_raw'].map(QUALITY_MAP)
-    df['ofsted_score'] = df['quality_raw'].map(OFSTED_SCORES)
-    df['score_band'] = df['quality_label'].fillna('Unknown')
+    # Derived fields
+    base['score_band'] = base['quality_label'].apply(lambda x: x if pd.notna(x) else 'Not yet rated')
+    base['head_name'] = (
+        base.get('head_first', pd.Series([''] * len(base))).fillna('') + ' ' +
+        base.get('head_last', pd.Series([''] * len(base))).fillna('')
+    ).str.strip().apply(lambda x: x or None)
+    base = base.drop(columns=[c for c in ['head_first', 'head_last'] if c in base.columns])
 
-    return df
+    return base
 
 
-def clean_val(val):
-    if val is None:
-        return None
-    if isinstance(val, float) and np.isnan(val):
-        return None
-    if isinstance(val, (np.integer,)):
-        return int(val)
+def clean(val):
+    if val is None: return None
+    if isinstance(val, float) and np.isnan(val): return None
+    if isinstance(val, (np.integer,)): return int(val)
     if isinstance(val, (np.floating,)):
-        if np.isnan(val):
-            return None
+        if np.isnan(val): return None
         iv = int(val)
-        return iv if val == iv else float(val)
+        return iv if val == iv else round(float(val), 6)
+    if isinstance(val, str): return val.strip() or None
     return val
 
 
-def to_records(df):
-    keep = [
-        'urn', 'name', 'local_authority', 'postcode', 'phase', 'school_type',
-        'admissions', 'sixth_form', 'pupils', 'age_from', 'age_to',
-        'quality_raw', 'behaviour_raw', 'personal_dev_raw', 'leadership_raw',
-        'safeguarding', 'inspection_date', 'idaci_quintile', 'ofsted_url',
-        'religious_character', 'mat_name', 'constituency',
-        'quality_label', 'ofsted_score', 'score_band',
-    ]
-    cols = [c for c in keep if c in df.columns]
-    records = []
-    for _, row in df.iterrows():
-        r = {c: clean_val(row.get(c)) for c in cols}
-        records.append(r)
-    return records
-
-
 def main():
-    print("Processing London Schools data...")
-    df = load_ofsted()
-    imd_df = load_imd()
-    df = process(df, imd_df)
-    records = to_records(df)
+    print("Building schools.json...")
+    gias = load_gias()
+    ofsted = load_ofsted()
+    imd = load_imd()
+    df = build(gias, ofsted, imd)
+
+    records = [{col: clean(row.get(col)) for col in df.columns} for _, row in df.iterrows()]
 
     with open(OUT_PATH, 'w') as f:
         json.dump(records, f, indent=2)
 
-    print(f"\n✅ Wrote {len(records)} schools to {OUT_PATH}")
-    print(f"   Score bands: { {r['score_band']: sum(1 for x in records if x['score_band']==r['score_band']) for r in records} }")
+    from collections import Counter
+    bands = Counter(r['score_band'] for r in records)
+    print(f"\n✅ Written {len(records)} schools to {OUT_PATH}")
+    print(f"   Bands: {dict(bands)}")
+    print(f"   With IMD: {sum(1 for r in records if r.get('imd_score') is not None)}")
+    print(f"   With coords: {sum(1 for r in records if r.get('lat') is not None)}")
 
 
 if __name__ == '__main__':
