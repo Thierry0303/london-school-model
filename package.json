@@ -1,7 +1,6 @@
 {
   "name": "london-schools-property-api",
   "version": "1.0.0",
-  "description": "Vercel serverless API: London school property search",
   "dependencies": {
     "axios": "^1.6.0"
   },
@@ -9,22 +8,3 @@
     "node": "18.x"
   }
 }
-```
-
-Commit with message: `Add package.json`
-
----
-
-That's all 6 files done. Your repo should now look like this:
-```
-your-repo/
-├── api/
-│   ├── _lib/
-│   │   └── helpers.js        ✓
-│   ├── search.js             ✓
-│   ├── schools.js            ✓
-│   └── property/
-│       └── [id].js           ✓
-├── vercel.json               ✓
-├── package.json              ✓
-└── ... your existing files
